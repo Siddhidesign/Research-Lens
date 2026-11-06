@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research Lens · an MCP server for UX research repositories</title>
+<meta name="description" content="An MCP server that lets an AI assistant query a UX research repository with participant-level citations attached. Built by Siddhi Manche.">
+<style>
+  :root {
+    --bg: #0d0f12;
+    --panel: #14171c;
+    --panel-2: #191d23;
+    --line: #262b33;
+    --ink: #e6e9ee;
+    --dim: #9aa3b0;
+    --dimmer: #6b7480;
+    --accent: #6ee7b7;
+    --accent-dim: #2d6a52;
+    --warn: #fbbf24;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 var(--mono);
+    padding: 0 20px 80px;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  header { padding: 56px 0 36px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    color: var(--dimmer); font-size: 12px; letter-spacing: .14em;
+    text-transform: uppercase; margin: 0 0 14px;
+  }
+  h1 { font-size: clamp(26px, 4.4vw, 40px); line-height: 1.15; margin: 0 0 16px; font-weight: 600; }
+  .lede { color: var(--dim); max-width: 68ch; margin: 0 0 22px; }
+  .byline { color: var(--dimmer); font-size: 13px; }
+  .byline a { color: var(--dim); }
+
+  .constraint {
+    margin: 28px 0 0; padding: 16px 18px;
+    border: 1px solid var(--accent-dim); border-left-width: 3px;
+    background: #101814; border-radius: 4px;
+    color: var(--ink); max-width: 72ch;
+  }
+  .constraint strong { color: var(--accent); font-weight: 600; }
+
+  h2 {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--dimmer); font-weight: 600;
+    margin: 54px 0 18px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+
+  .tools { display: grid; gap: 10px; }
+  .tool { border: 1px solid var(--line); border-radius: 5px; background: var(--panel); overflow: hidden; }
+  .tool > button.head {
+    width: 100%; display: flex; gap: 12px; align-items: baseline;
+    background: none; border: 0; color: inherit; font: inherit;
+    padding: 15px 16px; text-align: left; cursor: pointer;
+  }
+  .tool > button.head:hover { background: var(--panel-2); }
+  .tool > button.head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tname { color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .tdesc { color: var(--dim); font-size: 13.5px; }
+  .chev { margin-left: auto; color: var(--dimmer); flex: none; }
+
+  .body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--line); }
+  .tool[data-open="true"] .body { display: block; }
+  .tool[data-open="true"] .chev { transform: rotate(90deg); }
+  .chev { display: inline-block; transition: transform .15s; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 16px 0; }
+  label { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dimmer); margin-bottom: 6px; }
+  input[type=text], select {
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 4px; padding: 9px 11px; font: inherit; font-size: 14px; min-width: 190px;
+  }
+  input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent-dim); }
+  button.run {
+    background: var(--accent); color: #07130e; border: 0; border-radius: 4px;
+    padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.run:hover { filter: brightness(1.08); }
+  button.run:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .call {
+    background: #0a0c0f; border: 1px solid var(--line); border-radius: 4px;
+    padding: 12px 14px; color: var(--dim); font-size: 13px;
+    white-space: pre-wrap; word-break: break-word; margin: 0 0 10px;
+  }
+  .call .k { color: var(--dimmer); }
+  .call .v { color: var(--accent); }
+  .out {
+    background: #0a0c0f; border: 1px solid var(--line); border-radius: 4px;
+    padding: 14px; margin: 0; white-space: pre-wrap; word-break: break-word;
+    font-size: 13.5px; line-height: 1.65; color: var(--ink);
+    max-height: 460px; overflow: auto;
+  }
+  .out:empty { display: none; }
+  .label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dimmer); margin: 0 0 7px; }
+
+  .decisions { display: grid; gap: 14px; }
+  .d { border: 1px solid var(--line); border-radius: 5px; padding: 16px 18px; background: var(--panel); }
+  .d h3 { margin: 0 0 7px; font-size: 14.5px; font-weight: 600; }
+  .d p { margin: 0; color: var(--dim); font-size: 13.5px; }
+
+  .note { color: var(--dim); max-width: 72ch; font-size: 13.5px; }
+  .note code { color: var(--accent); background: #0a0c0f; padding: 1px 5px; border-radius: 3px; }
+
+  table.meta { border-collapse: collapse; font-size: 13.5px; }
+  table.meta td { padding: 5px 20px 5px 0; vertical-align: top; color: var(--dim); }
+  table.meta td:first-child { color: var(--dimmer); white-space: nowrap; }
+
+  footer { margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--dimmer); font-size: 13px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 620px) {
+    body { padding: 0 14px 60px; font-size: 14px; }
+    .tool > button.head { flex-wrap: wrap; gap: 4px 12px; }
+    input[type=text], select { min-width: 0; width: 100%; }
+    .controls > div { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Research Lens · MCP server</p>
+  <h1>Synthesis, against the actual evidence.</h1>
+  <p class="lede">
+    The usual AI research workflow is copy and paste. You move transcript chunks into a chat
+    window, the model summarises them, and you get something fluent back. Two things go wrong.
+    The model only sees what you happened to paste, so it cannot tell you how many participants
+    raised a theme or whether round two improved on round one. And the output has no citations,
+    so you cannot trace a claim back to who said it.
+  </p>
+  <p class="lede">That is not a model problem. It is an access problem.</p>
+  <p class="byline">
+    Built by Siddhi Manche ·
+    <a href="https://siddhidesign.github.io/Portfolio/">Portfolio</a> ·
+    <a href="https://github.com/Siddhidesign">GitHub</a>
+  </p>
+
+  <div class="constraint">
+    <strong>The constraint:</strong> the server retrieves and counts. It does not interpret.
+    Every excerpt returns with a participant ID, round and timestamp. The researcher still
+    writes the finding. The tool supplies the evidence and states its limits.
+  </div>
+</header>
+
+<h2>Run the tools</h2>
+<p class="note">
+  These five tools are what an AI assistant calls over MCP. This page runs the identical
+  functions in your browser so you can read the raw responses without a chat client.
+  <code>docs/verify_parity.mjs</code> diffs this page's output against the server's, so the
+  demo cannot drift from the real implementation.
+</p>
+
+<div class="tools" id="tools"></div>
+
+<h2>Design decisions worth defending</h2>
+<div class="decisions">
+  <div class="d">
+    <h3>Citations are mandatory, not optional</h3>
+    <p>Every excerpt returns as <code>[P14 | R2 | 08:47]</code>. A finding you cannot trace is a finding you cannot defend in a stakeholder review.</p>
+  </div>
+  <div class="d">
+    <h3>Participant counts, not quote counts</h3>
+    <p><code>pattern_frequency</code> counts distinct participants, because three quotes from one person is not a pattern. It splits by segment for the same reason.</p>
+  </div>
+  <div class="d">
+    <h3>The server says what it cannot tell you</h3>
+    <p><code>draft_findings</code> ends with a NOT SUPPORTED section: no causal claims, no generalising past the sample. An AI that sounds confident about six participants is a liability in research.</p>
+  </div>
+  <div class="d">
+    <h3>No interpretation</h3>
+    <p>The tools never say what a finding means. That judgment stays with the researcher. This is the line between AI that accelerates research and AI that quietly replaces thinking with plausible text.</p>
+  </div>
+</div>
+
+<h2>The data behind this demo</h2>
+<table class="meta" id="meta"></table>
+<p class="note" style="margin-top:16px">
+  The schema takes any study: sessions, segments, rounds, tagged excerpts, SUS scores. Quotes
+  here are paraphrased and anonymised for portfolio use.
+</p>
+
+<h2>Stack</h2>
+<p class="note">
+  TypeScript, Node, <code>@modelcontextprotocol/sdk</code>, stdio transport. The server runs
+  locally and connects to any MCP client. This page is static: no build step, no dependencies,
+  no backend.
+</p>
+
+<footer>
+  Research Lens · built by Siddhi Manche with an AI coding assistant · 2026
+</footer>
+
+</div>
+
+<script>
+// GENERATED by docs/build.mjs from data/sessions.json, docs/tools.mjs and docs/page.mjs.
+
+// Edit those files, not this block.
+
+const REPO = {
+  "study": {
+    "name": "Money Anchor, AI personal finance coach",
+    "irb": "HUM00280873",
+    "rounds": 2,
+    "participants": 24,
+    "note": "Sample data. Quotes are paraphrased and anonymised for portfolio use."
+  },
+  "sessions": [
+    {
+      "id": "P03", "round": 1, "segment": "first-time budgeter", "task": "review AI spending recommendation",
+      "completed": false, "sus": 52,
+      "excerpts": [
+        {"t": "04:12", "theme": "trust", "sentiment": "negative", "quote": "It tells me to cut groceries but I do not know where that number came from."},
+        {"t": "07:40", "theme": "explainability", "sentiment": "negative", "quote": "If it showed me which weeks it looked at I would believe it."}
+      ]
+    },
+    {
+      "id": "P07", "round": 1, "segment": "experienced budgeter", "task": "review AI spending recommendation",
+      "completed": true, "sus": 68,
+      "excerpts": [
+        {"t": "02:55", "theme": "trust", "sentiment": "mixed", "quote": "I would follow it for small things, not for rent."},
+        {"t": "09:18", "theme": "control", "sentiment": "negative", "quote": "There is no way to tell it that this month was unusual."}
+      ]
+    },
+    {
+      "id": "P11", "round": 1, "segment": "first-time budgeter", "task": "set a savings goal",
+      "completed": false, "sus": 45,
+      "excerpts": [
+        {"t": "03:30", "theme": "onboarding", "sentiment": "negative", "quote": "I stopped because it asked me six questions before showing anything."},
+        {"t": "06:02", "theme": "control", "sentiment": "negative", "quote": "I want to change the goal after, not commit now."}
+      ]
+    },
+    {
+      "id": "P14", "round": 2, "segment": "first-time budgeter", "task": "review AI spending recommendation",
+      "completed": true, "sus": 79,
+      "excerpts": [
+        {"t": "05:21", "theme": "trust", "sentiment": "positive", "quote": "Seeing the three weeks it used makes it feel like a reason, not a guess."},
+        {"t": "08:47", "theme": "explainability", "sentiment": "positive", "quote": "The confidence line told me when to double check it myself."}
+      ]
+    },
+    {
+      "id": "P19", "round": 2, "segment": "experienced budgeter", "task": "set a savings goal",
+      "completed": true, "sus": 84,
+      "excerpts": [
+        {"t": "02:10", "theme": "onboarding", "sentiment": "positive", "quote": "Two questions and I was in. That is the right number."},
+        {"t": "07:55", "theme": "control", "sentiment": "positive", "quote": "I could mark the month as unusual and it adjusted."}
+      ]
+    },
+    {
+      "id": "P22", "round": 2, "segment": "first-time budgeter", "task": "review AI spending recommendation",
+      "completed": true, "sus": 81,
+      "excerpts": [
+        {"t": "04:44", "theme": "trust", "sentiment": "positive", "quote": "I still checked it, but I checked it once instead of not using it."},
+        {"t": "10:02", "theme": "explainability", "sentiment": "mixed", "quote": "I understood the why, I still would not let it move money on its own."}
+      ]
+    }
+  ]
+};
+
+/**
+ * Research Lens, tool logic
+ *
+ * These five functions are a direct port of src/index.ts, the MCP server.
+ * The server speaks MCP over stdio to an AI assistant. This file runs the
+ * identical logic in a browser so the output can be seen without a chat client.
+ *
+ * verify_parity.mjs diffs this file's output against the server's, so the demo
+ * cannot drift away from the real thing.
+ *
+ * Design intent, unchanged from the server: every result carries the participant
+ * ID, round and timestamp behind it, so a claim can always be traced back to who
+ * said it. These functions retrieve and count. They do not interpret.
+ */
+
+/** Flatten every excerpt with its session context attached. */
+function allExcerpts(repo) {
+  return repo.sessions.flatMap((s) =>
+    s.excerpts.map((e) => ({
+      ...e,
+      participant: s.id,
+      round: s.round,
+      segment: s.segment,
+      task: s.task,
+    }))
+  );
+}
+
+function search_transcripts(repo, args) {
+  const rows = allExcerpts(repo);
+  const q = String(args.query ?? "").toLowerCase();
+  const hits = rows.filter(
+    (r) => r.quote.toLowerCase().includes(q) || r.theme.toLowerCase().includes(q)
+  );
+  if (!hits.length) return `No excerpts match "${args.query}".`;
+  return (
+    `${hits.length} excerpt(s) matching "${args.query}":\n\n` +
+    hits
+      .map(
+        (h) =>
+          `[${h.participant} | R${h.round} | ${h.segment} | ${h.t}] ${h.theme} / ${h.sentiment}\n  "${h.quote}"`
+      )
+      .join("\n\n")
+  );
+}
+
+function quotes_by_theme(repo, args) {
+  const rows = allExcerpts(repo);
+  let hits = rows.filter((r) => r.theme === args.theme);
+  if (typeof args.round === "number") hits = hits.filter((r) => r.round === args.round);
+  if (!hits.length) return `No quotes tagged "${args.theme}".`;
+  const groups = { positive: [], negative: [], mixed: [] };
+  hits.forEach((h) => groups[h.sentiment].push(h));
+  const body = Object.entries(groups)
+    .filter(([, v]) => v.length)
+    .map(
+      ([k, v]) =>
+        `${k.toUpperCase()} (${v.length})\n` +
+        v.map((h) => `  [${h.participant} | R${h.round} | ${h.t}] "${h.quote}"`).join("\n")
+    )
+    .join("\n\n");
+  return `Theme "${args.theme}" — ${hits.length} excerpt(s)\n\n${body}`;
+}
+
+function pattern_frequency(repo) {
+  const rows = allExcerpts(repo);
+  const total = repo.sessions.length;
+  const byTheme = {};
+  const bySegment = {};
+  rows.forEach((r) => {
+    (byTheme[r.theme] ??= new Set()).add(r.participant);
+    ((bySegment[r.theme] ??= {})[r.segment] ??= new Set()).add(r.participant);
+  });
+  const lines = Object.entries(byTheme)
+    .sort((a, b) => b[1].size - a[1].size)
+    .map(([theme, set]) => {
+      const seg = Object.entries(bySegment[theme])
+        .map(([s, ids]) => `${s} ${ids.size}`)
+        .join(", ");
+      return `${theme}: ${set.size}/${total} participants (${seg})`;
+    });
+  return `Pattern frequency across ${total} sessions\n\n${lines.join("\n")}`;
+}
+
+function compare_rounds(repo, args) {
+  const rows = allExcerpts(repo);
+  const theme = String(args.theme);
+  const summarise = (round) => {
+    const hits = rows.filter((r) => r.theme === theme && r.round === round);
+    const sessions = repo.sessions.filter((s) => s.round === round);
+    const pos = hits.filter((h) => h.sentiment === "positive").length;
+    const neg = hits.filter((h) => h.sentiment === "negative").length;
+    const done = sessions.filter((s) => s.completed).length;
+    const sus = sessions.length
+      ? Math.round(sessions.reduce((a, s) => a + s.sus, 0) / sessions.length)
+      : 0;
+    return { pos, neg, done, n: sessions.length, sus };
+  };
+  const r1 = summarise(1);
+  const r2 = summarise(2);
+  return (
+    `Theme "${theme}" across rounds\n\n` +
+    `Round 1: ${r1.pos} positive / ${r1.neg} negative | task completed ${r1.done}/${r1.n} | mean SUS ${r1.sus}\n` +
+    `Round 2: ${r2.pos} positive / ${r2.neg} negative | task completed ${r2.done}/${r2.n} | mean SUS ${r2.sus}\n\n` +
+    `Direction: sentiment ${r2.pos - r1.pos >= 0 ? "improved" : "declined"}, SUS ${
+      r2.sus - r1.sus >= 0 ? "+" : ""
+    }${r2.sus - r1.sus}.\n` +
+    `Caution: small n. Treat as directional, not significant.`
+  );
+}
+
+function draft_findings(repo, args) {
+  const rows = allExcerpts(repo);
+  const theme = String(args.theme);
+  const hits = rows.filter((r) => r.theme === theme);
+  if (!hits.length) return `No evidence tagged "${theme}", so no finding can be drafted.`;
+  const people = new Set(hits.map((h) => h.participant));
+  const neg = hits.filter((h) => h.sentiment === "negative");
+  const pos = hits.filter((h) => h.sentiment === "positive");
+  return (
+    `DRAFT FINDING — ${theme}\n\n` +
+    `Raised by ${people.size} of ${repo.sessions.length} participants.\n\n` +
+    `WHAT THE EVIDENCE SHOWS\n` +
+    (neg.length
+      ? `Friction (${neg.length}):\n` +
+        neg.map((h) => `  [${h.participant} ${h.t}] "${h.quote}"`).join("\n") +
+        "\n"
+      : "") +
+    (pos.length
+      ? `\nWorking (${pos.length}):\n` +
+        pos.map((h) => `  [${h.participant} ${h.t}] "${h.quote}"`).join("\n") +
+        "\n"
+      : "") +
+    `\nNOT SUPPORTED BY THIS DATA\n` +
+    `  Why participants felt this way beyond what they said aloud.\n` +
+    `  Whether it generalises past ${repo.sessions.length} participants.\n` +
+    `  Any causal claim. This is correlation in a small sample.\n\n` +
+    `The researcher writes the recommendation. This tool supplies evidence and its limits.`
+  );
+}
+
+const TOOLS = {
+  search_transcripts,
+  quotes_by_theme,
+  pattern_frequency,
+  compare_rounds,
+  draft_findings,
+};
+
+// Works as an ES module for the parity check, and as a plain script in the page.
+if (typeof window !== "undefined") window.RESEARCH_LENS_TOOLS = TOOLS;
+
+
+
+const themes = [...new Set(REPO.sessions.flatMap(s => s.excerpts.map(e => e.theme)))].sort();
+
+const SPEC = [
+  {
+    name: "search_transcripts",
+    desc: "Where was this mentioned, by whom, when",
+    fields: [{ key: "query", type: "text", label: "query", value: "rent" }],
+  },
+  {
+    name: "quotes_by_theme",
+    desc: "Every quote on this theme, grouped by sentiment",
+    fields: [
+      { key: "theme", type: "select", label: "theme", options: themes, value: "trust" },
+      { key: "round", type: "select", label: "round", options: ["all", "1", "2"], value: "all" },
+    ],
+  },
+  {
+    name: "pattern_frequency",
+    desc: "Is this a pattern, or one loud participant",
+    fields: [],
+  },
+  {
+    name: "compare_rounds",
+    desc: "Did the design change actually work",
+    fields: [{ key: "theme", type: "select", label: "theme", options: themes, value: "trust" }],
+  },
+  {
+    name: "draft_findings",
+    desc: "Evidence skeleton with citations, plus what the data does not support",
+    fields: [{ key: "theme", type: "select", label: "theme", options: themes, value: "control" }],
+  },
+];
+
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+const host = document.getElementById("tools");
+
+SPEC.forEach((spec, i) => {
+  const el = document.createElement("div");
+  el.className = "tool";
+  el.dataset.open = i === 0 ? "true" : "false";
+
+  const fieldsHtml = spec.fields.map(f => {
+    if (f.type === "select") {
+      const opts = f.options.map(o =>
+        `<option value="${esc(o)}"${o === f.value ? " selected" : ""}>${esc(o)}</option>`
+      ).join("");
+      return `<div><label for="${spec.name}-${f.key}">${esc(f.label)}</label>
+        <select id="${spec.name}-${f.key}" data-key="${f.key}">${opts}</select></div>`;
+    }
+    return `<div><label for="${spec.name}-${f.key}">${esc(f.label)}</label>
+      <input type="text" id="${spec.name}-${f.key}" data-key="${f.key}" value="${esc(f.value)}"></div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <button class="head" aria-expanded="${i === 0}" aria-controls="${spec.name}-body">
+      <span class="tname">${spec.name}</span>
+      <span class="tdesc">${esc(spec.desc)}</span>
+      <span class="chev" aria-hidden="true">›</span>
+    </button>
+    <div class="body" id="${spec.name}-body">
+      <div class="controls">
+        ${fieldsHtml}
+        <button class="run" type="button">Run</button>
+      </div>
+      <p class="label">The call an assistant makes</p>
+      <div class="call"></div>
+      <p class="label">What it gets back</p>
+      <pre class="out" tabindex="0" aria-live="polite"></pre>
+    </div>`;
+
+  const head = el.querySelector(".head");
+  head.addEventListener("click", () => {
+    const open = el.dataset.open === "true";
+    el.dataset.open = String(!open);
+    head.setAttribute("aria-expanded", String(!open));
+  });
+
+  const readArgs = () => {
+    const args = {};
+    el.querySelectorAll("[data-key]").forEach(node => {
+      const k = node.dataset.key;
+      let v = node.value;
+      if (k === "round") {
+        if (v === "all") return;
+        args[k] = Number(v);
+        return;
+      }
+      args[k] = v;
+    });
+    return args;
+  };
+
+  const run = () => {
+    const args = readArgs();
+    const callEl = el.querySelector(".call");
+    const outEl = el.querySelector(".out");
+    const argStr = Object.keys(args).length
+      ? JSON.stringify(args, null, 2).replace(/^/gm, "  ").trim()
+      : "{}";
+    callEl.innerHTML =
+      `<span class="k">tool:</span> <span class="v">${esc(spec.name)}</span>\n` +
+      `<span class="k">arguments:</span> ${esc(argStr)}`;
+    try {
+      outEl.textContent = TOOLS[spec.name](REPO, args);
+    } catch (err) {
+      outEl.textContent = "Error: " + err.message;
+    }
+  };
+
+  el.querySelector(".run").addEventListener("click", run);
+  el.querySelectorAll("input[type=text]").forEach(inp =>
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") run(); })
+  );
+
+  host.appendChild(el);
+  run();
+});
+
+const study = REPO.study;
+document.getElementById("meta").innerHTML = [
+  ["Study", study.name],
+  ["IRB protocol", study.irb],
+  ["Sessions in this demo", REPO.sessions.length],
+  ["Rounds", study.rounds],
+  ["Participants in the full study", study.participants],
+  ["Themes tagged", themes.join(", ")],
+].map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+</script>
+</body>
+</html>
