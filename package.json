@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "description": "An MCP server that gives an AI assistant direct access to a UX research repository: search transcripts, pull quotes by theme, measure pattern frequency across participants, and draft evidence-backed findings.",
   "type": "module",
-  "bin": { "ux-research-mcp": "./build/index.js" },
+  "bin": {
+    "ux-research-mcp": "./build/index.js"
+  },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "import": "node import.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

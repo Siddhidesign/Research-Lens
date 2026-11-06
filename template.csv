@@ -1,0 +1,6 @@
+participant,round,segment,task,completed,sus,timestamp,theme,sentiment,quote
+P01,1,new user,find a refund,no,52,03:14,navigation,negative,"I could not tell which button was the one that actually submits."
+P01,1,new user,find a refund,no,52,06:02,trust,negative,"It says approved but I do not know approved by what."
+P02,1,returning user,find a refund,yes,70,02:48,navigation,mixed,"I found it, but only because I had done it before."
+P03,2,new user,find a refund,yes,81,04:30,navigation,positive,"The submit button is obvious now."
+P03,2,new user,find a refund,yes,81,07:11,trust,positive,"Showing me what it checked makes it feel like a reason, not a guess."

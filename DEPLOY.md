@@ -22,21 +22,29 @@ does, and that is the one thing this project cannot afford.
 
 ## Create the repo and push
 
+The repo is already initialized and all 17 files are staged. One leftover to clear first:
+a stale `index.lock` from the setup, which has to be removed before git will run.
+
 ```bash
-cd ux-research-mcp
-git init
-git add .
+cd ~/Documents/Claude/Projects/"Siddhi's Ai assistant"/ux-research-mcp
+rm -f .git/index.lock
+git status --short          # should list the staged files, no node_modules, no build/
 git commit -m "Research Lens: MCP server for UX research repositories, with demo page"
 git branch -M main
 ```
 
-Then on github.com, create a new **public** repo named `research-lens`. Do not add a README,
-licence or .gitignore, since you already have them. Copy the remote URL it gives you, then:
+Then on github.com, create a new **public** repo named `research-lens`. Do not tick the
+boxes for a README, licence or .gitignore, since you already have all three. Copy the remote
+URL it gives you, then:
 
 ```bash
 git remote add origin https://github.com/Siddhidesign/research-lens.git
 git push -u origin main
 ```
+
+If the push asks for a password, GitHub wants a personal access token rather than your
+account password: github.com → Settings → Developer settings → Personal access tokens →
+Tokens (classic) → Generate new token, tick `repo`, and paste the token as the password.
 
 ## Turn on Pages
 
