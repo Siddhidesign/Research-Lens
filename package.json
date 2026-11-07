@@ -1,6 +1,6 @@
 {
   "name": "research-lens-mcp",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "An MCP server that lets any AI assistant query a UX research repository with participant-level citations attached. It retrieves and counts; it does not interpret.",
   "type": "module",
   "bin": {

@@ -437,6 +437,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "quote_context",
+      description:
+        "Put a quote back in its context. Given a quote or a fragment of one, returns who said it, everything else that participant said on the same theme, and how many participants agreed or disagreed. Use when a quote turns up in a deck or a meeting and you need to know whether it represents the research or just one line of it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          quote: { type: "string", description: "The quote, or any distinctive fragment of it." },
+          ...STUDY_ARG,
+        },
+        required: ["quote"],
+      },
+    },
+    {
       name: "find_dissent",
       description:
         "Where participants disagreed with each other, rather than the consensus a summary would produce. For one theme, or every theme, shows the split in sentiment, who sat on each side and their words. Also lists participants whose words reached no theme at all. Call this before writing a finding that says users think something.",
@@ -900,6 +913,72 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     );
   }
 
+  if (name === "quote_context") {
+    const q = norm(args.quote);
+    if (q.length < 8) {
+      return out(`Give a longer fragment. "${args.quote}" is too short to identify a quote.`);
+    }
+    // Match on the fragment, then fall back to overlapping words, because a
+    // quote in a slide has usually been trimmed or lightly reworded.
+    let hits = rows.filter((r) => norm(r.quote).includes(q));
+    let approximate = false;
+    if (!hits.length) {
+      const qwords = new Set(q.split(/\W+/).filter((w) => w.length > 3));
+      const scored = rows
+        .map((r) => {
+          const rw = new Set(norm(r.quote).split(/\W+/).filter((w) => w.length > 3));
+          const overlap = [...qwords].filter((w) => rw.has(w)).length;
+          return { r, score: qwords.size ? overlap / qwords.size : 0 };
+        })
+        .filter((x) => x.score >= 0.5)
+        .sort((a, b) => b.score - a.score);
+      hits = scored.slice(0, 1).map((x) => x.r);
+      approximate = hits.length > 0;
+    }
+    if (!hits.length) {
+      return out(
+        `No quote${scope} matches that.\n` +
+          `  Either it came from a different study, it was paraphrased past recognition, ` +
+          `or it is not in the repository at all. A quote nobody can find is a quote nobody should act on.`
+      );
+    }
+
+    const h = hits[0];
+    const sameTheme = rows.filter((r) => r.theme === h.theme);
+    const samePerson = sameTheme.filter((r) => r.participant === h.participant);
+    const people = new Set(sameTheme.map((r) => r.participant));
+    const total = new Set(sessions.map((s) => s.id)).size;
+    const bySent = (s: string) =>
+      new Set(sameTheme.filter((r) => r.sentiment === s).map((r) => r.participant));
+    const pos = bySent("positive"), neg = bySent("negative"), mix = bySent("mixed");
+    const opposite = h.sentiment === "positive" ? neg : h.sentiment === "negative" ? pos : new Set<string>();
+
+    return out(
+      `QUOTE IN CONTEXT${scope}${approximate ? "\n(closest match, not word for word)" : ""}\n\n` +
+        `[${cite(h, multi, showRound)}] ${h.segment}\n  ${quoteOrWithheld(h)}\n\n` +
+        `THEME: ${h.theme}, ${h.sentiment}\n` +
+        `  Raised by ${people.size} of ${total} participants.\n` +
+        `  ${pos.size} positive, ${neg.size} negative${mix.size ? `, ${mix.size} mixed` : ""}.\n\n` +
+        `EVERYTHING ${h.participant} SAID ON THIS THEME\n` +
+        samePerson.map((r) => `  [${r.t}] ${r.sentiment} — ${quoteOrWithheld(r)}`).join("\n") +
+        (samePerson.length === 1 ? `\n  (this is the only thing they said about it)` : "") +
+        (opposite.size
+          ? `\n\nPARTICIPANTS WHO FELT THE OPPOSITE (${opposite.size})\n` +
+            sameTheme
+              .filter((r) => opposite.has(r.participant))
+              .slice(0, 3)
+              .map((r) => `  [${cite(r, multi, showRound)}] ${quoteOrWithheld(r)}`)
+              .join("\n")
+          : `\n\nNo participant expressed the opposite view on this theme.`) +
+        `\n\nBEFORE THIS QUOTE GOES IN A DECK\n` +
+        `  It is 1 of ${sameTheme.length} excerpt(s) on this theme, from ${people.size} of ${total} participants.\n` +
+        (opposite.size
+          ? `  ${opposite.size} participant(s) said the opposite. Showing this quote alone would not represent the research.\n`
+          : `  Nobody contradicted it, though ${total - people.size} participant(s) did not raise the theme at all.\n`) +
+        `  The quote is real. Whether it is representative is a separate question, and this is the number that answers it.`
+    );
+  }
+
   if (name === "find_dissent") {
     if (!rows.length) return out(`No evidence${scope}.`);
     const wanted = args.theme ? String(args.theme) : null;
@@ -1160,7 +1239,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             `\n  These are leads, not findings. Do not put them in a readout as patterns.`
           : `  Every theme has 3 or more participants behind it.`) +
         `\n\nWHAT IS MISSING ENTIRELY\n` +
-        `  This tool can only report on people who were recruited. Anyone your recruitment never reached is invisible here, ` +
+        `  Only tagged lines are visible here. Anything a participant said that nobody tagged does not exist as far as this server is concerned, ` +
+        `and it cannot tell you what it is not seeing. In the one evaluation run so far, both missed findings were lost this way, not to retrieval. ` +
+        `If a theme seems thinner than you remember the sessions being, the gap is probably in the tagging.\n` +
+        `  And only people who were recruited. Anyone your recruitment never reached is invisible here, ` +
         `including non-users, people who gave up before becoming customers, and anyone screened out. That is usually the biggest gap and no tool can show it to you.`
     );
   }
