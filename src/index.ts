@@ -63,7 +63,8 @@ type Consent = "full" | "internal" | "counts" | "withdrawn";
 
 type Session = {
   id: string;
-  round: number;
+  /** Optional. Generative and discovery research has no rounds; defaults to 1. */
+  round?: number;
   segment: string;
   task: string;
   completed: boolean;
@@ -75,6 +76,14 @@ type Session = {
   consent?: Consent;
   /** Optional. Free text, e.g. "withdrew by email 2026-10-02". Never inferred. */
   consent_note?: string;
+  /**
+   * Optional. Which recording or transcript this session came from, e.g.
+   * "sarah-usability-r2.mp4". Falls back to the filename the session was
+   * loaded from, so a citation always names something you can go and open.
+   */
+  source?: string;
+  /** Set at load time. The .json file this session was read from. */
+  _file?: string;
 };
 
 type Study = {
@@ -91,7 +100,7 @@ type Study = {
 
 const SEVERITY_ORDER: Severity[] = ["blocker", "major", "minor"];
 
-type LoadedStudy = Study & { key: string; file: string };
+type LoadedStudy = Study & { key: string; files: string[]; duplicates: string[] };
 
 /** Where studies live. A folder of .json files, or a single .json file. */
 const DATA_PATH = process.env.RESEARCH_LENS_DATA?.trim();
@@ -127,19 +136,22 @@ function studyFiles(): string[] {
  * reads better than whatever the file happens to be called; the filename is the
  * fallback. Collisions get a numeric suffix so two studies never share a handle.
  */
-function keyFor(parsed: Study, file: string, taken: LoadedStudy[]): string {
+function keyFor(parsed: Study, file: string): string {
   const slug = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
-  const base = slug(String(parsed.study?.name ?? "")) || slug(basename(file, ".json")) || "study";
-  if (!taken.some((t) => t.key === base)) return base;
-  let n = 2;
-  while (taken.some((t) => t.key === `${base}-${n}`)) n++;
-  return `${base}-${n}`;
+  return slug(String(parsed.study?.name ?? "")) || slug(basename(file, ".json")) || "study";
 }
 
-/** Read every study fresh on each call, so edits take effect with no restart. */
+/**
+ * Read every study fresh on each call, so edits take effect with no restart.
+ *
+ * Files that declare the same study name are MERGED into one study. A study
+ * split across one file per interview is still one study, and its participants
+ * belong in one denominator. Splitting the file should never silently split
+ * the evidence.
+ */
 function loadAll(): LoadedStudy[] {
-  const out: LoadedStudy[] = [];
+  const byKey = new Map<string, LoadedStudy>();
   for (const file of studyFiles()) {
     let parsed: Study;
     try {
@@ -150,9 +162,30 @@ function loadAll(): LoadedStudy[] {
     if (!Array.isArray(parsed?.sessions)) {
       throw new DataError(`"${basename(file)}" has no "sessions" array.`);
     }
-    out.push({ ...parsed, key: keyFor(parsed, file, out), file });
+    const key = keyFor(parsed, file);
+    const existing = byKey.get(key);
+    const stamp = (ss: Session[]) =>
+      ss.map((x) => ({ ...x, round: x.round ?? 1, _file: basename(file) }));
+    if (!existing) {
+      byKey.set(key, { ...parsed, sessions: stamp(parsed.sessions), key, files: [basename(file)], duplicates: [] });
+      continue;
+    }
+    // Merge, but never count the same participant-round twice.
+    const seen = new Set(existing.sessions.map((s) => `${s.id}|${s.round}`));
+    for (const sess of parsed.sessions) {
+      const sig = `${sess.id}|${sess.round}`;
+      if (seen.has(sig)) {
+        existing.duplicates.push(`${sess.id} round ${sess.round} (${basename(file)})`);
+        continue;
+      }
+      seen.add(sig);
+      existing.sessions.push({ ...sess, round: sess.round ?? 1, _file: basename(file) });
+    }
+    existing.files.push(basename(file));
+    // Keep whichever study block carries the most context.
+    existing.study = { ...parsed.study, ...existing.study };
   }
-  return out;
+  return [...byKey.values()];
 }
 
 /**
@@ -189,6 +222,9 @@ function allExcerpts(studies: LoadedStudy[]) {
         task: s.task,
         study: st.key,
         consent: consentOf(s),
+        // An explicit source always shows. The filename only helps when a study
+        // was assembled from several files, so it stays hidden otherwise.
+        source: s.source ?? (st.files.length > 1 ? s._file ?? "" : ""),
       }))
     )
   );
@@ -262,11 +298,18 @@ function applySegment<T extends { segment: string }>(rows: T[], segment: unknown
 }
 
 /** Prefix a citation with the study only when more than one is in scope. */
-const cite = (h: { participant: string; round: number; t: string; study: string }, multi: boolean) =>
-  `${multi ? h.study + " | " : ""}${h.participant} | R${h.round} | ${h.t}`;
+const cite = (
+  h: { participant: string; round?: number; t: string; study: string; source?: string },
+  multi: boolean,
+  showRound = true
+) =>
+  `${multi ? h.study + " | " : ""}${h.participant}` +
+  (showRound && h.round != null ? ` | R${h.round}` : "") +
+  ` | ${h.t}` +
+  (h.source ? ` | ${h.source}` : "");
 
 const server = new Server(
-  { name: "research-lens", version: "2.2.0" },
+  { name: "research-lens", version: "2.3.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -412,18 +455,24 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const rows = allExcerpts(studies);
   const sessions = sessionsOf(studies);
   const multi = studies.length > 1;
+  // Rounds are only worth printing when a study actually ran more than one.
+  const showRound = new Set(sessions.map((x) => x.round ?? 1)).size > 1;
   const scope = args.study ? ` in "${args.study}"` : multi ? ` across ${studies.length} studies` : "";
 
   if (name === "list_studies") {
     const lines = all.map((st) => {
       const people = new Set(st.sessions.map((s) => s.id));
-      const rounds = [...new Set(st.sessions.map((s) => s.round))].sort();
+      const rounds = [...new Set(st.sessions.map((s) => s.round ?? 1))].sort();
       const segments = [...new Set(st.sessions.map((s) => s.segment))];
       const themes = [...new Set(st.sessions.flatMap((s) => s.excerpts.map((e) => e.theme)))];
       const quotes = st.sessions.reduce((a, s) => a + s.excerpts.length, 0);
       return (
         `${st.key}\n` +
         `  name:         ${st.study?.name ?? "(unnamed)"}\n` +
+        (st.files.length > 1 ? `  merged from:  ${st.files.length} files (${st.files.join(", ")})\n` : "") +
+        (st.duplicates.length
+          ? `  SKIPPED as duplicates: ${st.duplicates.join("; ")}\n`
+          : "") +
         `  participants: ${people.size}   sessions: ${st.sessions.length}   quotes: ${quotes}\n` +
         `  rounds:       ${rounds.join(", ") || "none"}\n` +
         `  segments:     ${segments.join(", ") || "none"}\n` +
@@ -451,7 +500,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         hits
           .map(
             (h) =>
-              `[${cite(h, multi)} | ${h.segment}] ${h.theme} / ${h.sentiment}\n  ${quoteOrWithheld(h)}`
+              `[${cite(h, multi, showRound)} | ${h.segment}] ${h.theme} / ${h.sentiment}\n  ${quoteOrWithheld(h)}`
           )
           .join("\n\n")
     );
@@ -460,7 +509,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (name === "quotes_by_theme") {
     const seg = applySegment(rows, args.segment);
     let hits = seg.rows.filter((r) => themeMatches(r.theme, args.theme));
-    if (typeof args.round === "number") hits = hits.filter((r) => r.round === args.round);
+    if (typeof args.round === "number") hits = hits.filter((r) => (r.round ?? 1) === args.round);
     if (!hits.length) {
       // Distinguish "that theme does not exist" from "it exists, just not in
       // that segment". Conflating them reads as an absence of evidence.
@@ -486,7 +535,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       .map(
         ([k, v]) =>
           `${k.toUpperCase()} (${v.length})\n` +
-          v.map((h) => `  [${cite(h, multi)}] ${quoteOrWithheld(h)}`).join("\n")
+          v.map((h) => `  [${cite(h, multi, showRound)}] ${quoteOrWithheld(h)}`).join("\n")
       )
       .join("\n\n");
     return out(`Theme "${args.theme}"${scope}${seg.label} — ${hits.length} excerpt(s)\n\n${body}`);
@@ -542,15 +591,19 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       );
     }
     const theme = String(args.theme);
-    const rounds = [...new Set(sessions.map((s) => s.round))].sort((a, b) => a - b);
+    // round is optional in the data; loadAll defaults it, but narrow for the type
+    const rounds = [...new Set(sessions.map((s) => s.round ?? 1))].sort((a, b) => a - b);
     if (rounds.length < 2) {
       return out(
-        `Only round ${rounds[0] ?? "none"} exists${scope}, so there is nothing to compare.`
+        rounds.length === 0
+          ? `No sessions${scope}, so there is nothing to compare.`
+          : `This study has a single round${scope}, so there is nothing to compare. ` +
+            `compare_rounds is for studies run before and after a design change.`
       );
     }
     const summarise = (round: number) => {
-      const hits = rows.filter((r) => r.theme === theme && r.round === round);
-      const ss = sessions.filter((s) => s.round === round);
+      const hits = rows.filter((r) => r.theme === theme && (r.round ?? 1) === round);
+      const ss = sessions.filter((s) => (s.round ?? 1) === round);
       const scored = ss.filter((s) => typeof s.sus === "number" && s.sus > 0);
       return {
         pos: hits.filter((h) => h.sentiment === "positive").length,
@@ -615,7 +668,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const block = (label: string, v: typeof hits) =>
       v.length
         ? `${label} (${v.length}):\n` +
-          v.map((h) => `  [${cite(h, multi)}] ${quoteOrWithheld(h)}`).join("\n") +
+          v.map((h) => `  [${cite(h, multi, showRound)}] ${quoteOrWithheld(h)}`).join("\n") +
           "\n"
         : "";
     return out(
@@ -669,7 +722,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const segs = [...new Set(hits.map((h) => h.segment))];
           const quotes = hits
             .slice(0, 3)
-            .map((h) => `      [${cite(h, multi)}] ${quoteOrWithheld(h)}`)
+            .map((h) => `      [${cite(h, multi, showRound)}] ${quoteOrWithheld(h)}`)
             .join("\n");
           return {
             n: who.size,
@@ -773,7 +826,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
               `${studyLabel(x.st)}\n` +
               `  ${x.people.size} participant(s), ${x.rws.length} excerpt(s)\n` +
               `  themes: ${[...new Set(x.rws.map((r) => r.theme))].join(", ")}\n` +
-              `  e.g. [${cite({ ...x.rws[0], study: x.st.key }, true)}] ${quoteOrWithheld(x.rws[0])}`
+              `  e.g. [${cite({ ...x.rws[0], study: x.st.key }, true, showRound)}] ${quoteOrWithheld(x.rws[0])}`
           )
           .join("\n\n") +
         `\n\nRead these before commissioning new research on the topic.`

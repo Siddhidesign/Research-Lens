@@ -139,7 +139,14 @@ Node 18 or newer. Nothing to clone, nothing to build.
 
 ## Your data
 
-`RESEARCH_LENS_DATA` points at a folder. One `.json` file per study, added or edited any time — the server re-reads on every question, so no restart.
+`RESEARCH_LENS_DATA` points at a folder of `.json` files, added or edited any time — the server
+re-reads on every question, so no restart.
+
+**Split a study across as many files as you like.** Files that declare the same `study.name` are
+merged into one study, so one file per interview works exactly as well as one file per study. A
+study split across files is still one study and its participants belong in one denominator.
+Repeated participant-and-round pairs are skipped rather than double counted, and `list_studies`
+reports which files were merged and anything it dropped.
 
 ```json
 {
