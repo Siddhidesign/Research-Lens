@@ -35,6 +35,15 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Single source of truth, so the reported version can never drift from the package. */
+const VERSION: string = (() => {
+  try {
+    return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 type Severity = "blocker" | "major" | "minor";
 
 type Excerpt = {
@@ -314,7 +323,7 @@ const cite = (
   (h.source ? ` | ${h.source}` : "");
 
 const server = new Server(
-  { name: "research-lens", version: "2.3.0" },
+  { name: "research-lens", version: VERSION },
   { capabilities: { tools: {} } }
 );
 
