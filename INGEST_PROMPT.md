@@ -33,14 +33,14 @@ npm run import my-study.csv "Study name" "IRB number"
 ```
 
 It backs up the old data, refuses to write anything if a row is malformed, and tells you
-exactly which row is wrong. Then just ask Claude Desktop a question.
+exactly which row is wrong. Then just ask your assistant a question.
 
 ---
 
 ## B. From raw transcripts, with a prompt
 
-Put your transcript files in a folder. Open Claude Code in the project, or Cowork with the
-folder connected, and paste everything below the line.
+Put your transcript files in a folder. Open any AI assistant that can read the folder (Claude Code, Cursor, Windsurf, ChatGPT
+with the files attached) and paste everything below the line.
 
 ---
 

@@ -1,11 +1,12 @@
 {
   "name": "research-lens-mcp",
-  "version": "2.3.0",
-  "description": "An MCP server that lets an AI assistant query a UX research repository with participant-level citations attached. It retrieves and counts; it does not interpret.",
+  "version": "2.5.0",
+  "description": "An MCP server that lets any AI assistant query a UX research repository with participant-level citations attached. It retrieves and counts; it does not interpret.",
   "type": "module",
   "bin": {
     "research-lens": "build/index.js",
-    "research-lens-import": "import.mjs"
+    "research-lens-import": "import.mjs",
+    "research-lens-transcript": "transcript.mjs"
   },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
@@ -54,6 +55,7 @@
     "data/sessions.json",
     "template.csv",
     "import.mjs",
+    "transcript.mjs",
     "INGEST_PROMPT.md",
     "README.md",
     "LICENSE"

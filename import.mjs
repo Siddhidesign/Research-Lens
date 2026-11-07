@@ -180,6 +180,6 @@ Imported into ${target}
 Themes, by how many participants raised each:
 ${Object.entries(themes).sort((a,b)=>b[1].size-a[1].size).map(([t,s]) => `  ${t}: ${s.size}`).join("\n")}
 
-Ask Claude Desktop a question now. No restart needed.
+Ask your AI assistant a question now. No restart needed.
 ${process.env.RESEARCH_LENS_DATA ? "" : "\nNote: RESEARCH_LENS_DATA is not set, so this was written to the current folder.\nPoint that variable at a studies folder and move the file there for the server to see it."}
 `);

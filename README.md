@@ -104,6 +104,10 @@ now. Consent is read from the data and never inferred.
 
 ## Install
 
+Research Lens speaks MCP, an open standard, so it works with **any MCP client** — Claude
+Desktop, Claude Code, Cursor, Windsurf, VS Code, Zed, Cline and others. Setup is the same
+shape everywhere: point the client at `npx -y research-lens-mcp` over stdio.
+
 **Claude Desktop.** Open your config:
 
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -133,7 +137,9 @@ Restart Claude Desktop. Leave out the `env` block to try it against the bundled 
 claude mcp add research-lens -e RESEARCH_LENS_DATA=/path/to/studies -- npx -y research-lens-mcp
 ```
 
-**Any other MCP client:** the command is `npx -y research-lens-mcp` over stdio.
+**Cursor, Windsurf, Zed, Cline and the rest:** each has its own MCP settings file, but the
+entry is the same — command `npx`, args `-y research-lens-mcp`, and `RESEARCH_LENS_DATA` in
+the environment.
 
 Node 18 or newer. Nothing to clone, nothing to build.
 
@@ -184,7 +190,20 @@ npx -p research-lens-mcp research-lens-import my-study.csv "Study name"
 
 It validates every row, names the row and the reason if something is wrong, and writes nothing until the file is clean.
 
-**From raw transcripts.** [`INGEST_PROMPT.md`](INGEST_PROMPT.md) is a prompt you hand to Claude along with your transcripts. It proposes a theme list and stops for your approval, tags the quotes, then shows you every judgment call before writing anything. It is instructed to use verbatim quotes only and to anonymise as it goes.
+**From a Zoom or Teams recording.** Download the transcript, usually a `.vtt`, and run:
+
+```bash
+npx -p research-lens-mcp research-lens-transcript interview.vtt \
+  --study "EV charging study" --participant P01 --segment "Tesla owner" \
+  --source interview.mp4 --skip-moderator
+```
+
+It reads `.vtt`, `.srt` and timestamped `.txt`, merges cues split mid-sentence, drops the
+moderator's turns, and writes a study file with every timestamp already in place. Every
+excerpt comes out as theme `untagged`, because deciding what a quote is about is
+interpretation and that stays with you. Delete what carries no evidence, tag what does.
+
+**From raw transcripts, with an assistant.** [`INGEST_PROMPT.md`](INGEST_PROMPT.md) is a prompt you hand to any AI assistant along with your transcripts. It proposes a theme list and stops for your approval, tags the quotes, then shows you every judgment call before writing anything. It is instructed to use verbatim quotes only and to anonymise as it goes.
 
 Tagging lives in that prompt rather than in the server on purpose. Deciding a quote is "about trust" and "negative" is interpretation, and interpretation is the researcher's job. AI proposes, the researcher decides, the tool keeps score.
 

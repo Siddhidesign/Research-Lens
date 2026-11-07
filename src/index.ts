@@ -84,6 +84,11 @@ type Session = {
   source?: string;
   /** Set at load time. The .json file this session was read from. */
   _file?: string;
+  /**
+   * Optional. The researcher's own turns, kept rather than discarded, so
+   * check_moderator can look at how the questions were asked.
+   */
+  moderator_turns?: { t: string; text: string }[];
 };
 
 type Study = {
@@ -421,6 +426,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: { issue: { type: "string", description: "Issue name, or a theme." } },
         required: ["issue"],
       },
+    },
+    {
+      name: "check_moderator",
+      description:
+        "Looks at the researcher's own questions rather than the participants' answers. Reports vocabulary the moderator used before any participant did and who then echoed it, leading and closed question phrasings, and how speaking time was distributed. Use before trusting a theme, to check you found it rather than planted it.",
+      inputSchema: { type: "object", properties: { ...STUDY_ARG } },
     },
     {
       name: "consent_status",
@@ -865,6 +876,128 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           })
           .join("\n\n") +
         `\n\nEvery line above is a participant's own words with the session it came from. Nothing here is summarised or rephrased.`
+    );
+  }
+
+  if (name === "check_moderator") {
+    const withTurns = sessions.filter((x) => (x.moderator_turns?.length ?? 0) > 0);
+    if (!withTurns.length) {
+      return out(
+        `No moderator turns recorded${scope}, so there is nothing to check.\n\n` +
+          `Import transcripts with --skip-moderator (or --moderator "Name") and the researcher's ` +
+          `own turns are kept under "moderator_turns" instead of being thrown away.`
+      );
+    }
+
+    const toSec = (t: string) => {
+      const p = t.split(":").map(Number);
+      return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : (p[0] || 0) * 60 + (p[1] || 0);
+    };
+    const STOP = new Set(
+      ("the a an and or but if then than that this these those i you he she it we they me him her us them my your his its our their what which who whom whose when where why how all any both each few more most other some such no nor not only own same so too very can will just do does did doing done have has had having be been being am is are was were would could should may might must shall about above after again against because before below between during for from further here into of off on once out over through to under until up with " +
+       "okay yeah yes right sure thanks thank think know like really going get got go went say said tell told talk maybe actually basically kind sort bit lot thing things one two also well now even back way time use used using").split(" ")
+    );
+    const words = (txt: string) =>
+      (txt.toLowerCase().match(/[a-z][a-z'-]{3,}/g) ?? []).filter((w) => !STOP.has(w));
+
+    // 1. PRIMING: a word the moderator says first, that participants then adopt.
+    const modFirst = new Map<string, { t: number; quote: string }>();
+    for (const sess of withTurns) {
+      for (const turn of sess.moderator_turns!) {
+        const at = toSec(turn.t);
+        for (const w of new Set(words(turn.text))) {
+          const prev = modFirst.get(w);
+          if (!prev || at < prev.t) modFirst.set(w, { t: at, quote: turn.text });
+        }
+      }
+    }
+    type Echo = { participant: string; t: string; quote: string };
+    const echoes = new Map<string, Echo[]>();
+    const partFirst = new Map<string, number>();
+    for (const r of rows) {
+      const at = toSec(r.t);
+      for (const w of new Set(words(r.quote))) {
+        if (!partFirst.has(w) || at < partFirst.get(w)!) partFirst.set(w, at);
+        const m = modFirst.get(w);
+        if (m && m.t < at) {
+          const list = echoes.get(w) ?? [];
+          if (!list.some((e) => e.participant === r.participant))
+            list.push({ participant: r.participant, t: r.t, quote: r.quote });
+          echoes.set(w, list);
+        }
+      }
+    }
+    const primed = [...echoes.entries()]
+      .filter(([w, list]) => list.length >= 1 && modFirst.get(w)!.t < (partFirst.get(w) ?? Infinity))
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 8);
+
+    // 2. LEADING AND CLOSED QUESTIONS, by phrasing only.
+    const LEADING: [RegExp, string][] = [
+      [/\b(don'?t|doesn'?t|didn'?t|wouldn'?t|isn'?t|aren'?t|wasn'?t|haven'?t)\s+(you|it|that|they)\b/i, "negative tag question"],
+      [/\bso\s+you\b/i, "summarising back to the participant"],
+      [/\b(was|is|were)\s+(it|that|this)\s+(hard|difficult|frustrating|confusing|annoying|easy|simple|clear|good|bad)\b/i, "valence supplied in the question"],
+      [/\bdid you find\s+(it|that|this)?\s*(hard|difficult|frustrating|confusing|easy|clear)/i, "valence supplied in the question"],
+      [/\bhow\s+(frustrating|annoying|difficult|confusing|easy|hard)\b/i, "presupposes the feeling"],
+      [/\bwould you say\b/i, "inviting agreement"],
+      [/\b(obviously|clearly|surely|of course)\b/i, "assumes agreement"],
+      [/,?\s*right\s*\?\s*$/i, "seeking confirmation"],
+    ];
+    const CLOSED = /^\s*(do|does|did|is|are|was|were|have|has|had|can|could|will|would|should)\b/i;
+    const flagged: string[] = [];
+    let closedCount = 0, questionCount = 0;
+    for (const sess of withTurns) {
+      for (const turn of sess.moderator_turns!) {
+        const isQ = turn.text.includes("?");
+        if (isQ) questionCount++;
+        for (const [re, why] of LEADING) {
+          if (re.test(turn.text)) {
+            flagged.push(`  [${turn.t}] ${why}\n    "${turn.text.trim()}"`);
+            break;
+          }
+        }
+        if (isQ && CLOSED.test(turn.text)) closedCount++;
+      }
+    }
+
+    // 3. AIRTIME, in words.
+    const modWords = withTurns.reduce(
+      (a, x) => a + x.moderator_turns!.reduce((b, t) => b + t.text.split(/\s+/).length, 0), 0);
+    const byParticipant: Record<string, number> = {};
+    rows.forEach((r) => {
+      byParticipant[r.participant] = (byParticipant[r.participant] ?? 0) + r.quote.split(/\s+/).length;
+    });
+    const partTotal = Object.values(byParticipant).reduce((a, b) => a + b, 0);
+    const airtime = Object.entries(byParticipant).sort((a, b) => b[1] - a[1]);
+
+    return out(
+      `MODERATOR CHECK${scope}\n` +
+        `${withTurns[0].moderator_turns!.length} moderator turns, ${questionCount} questions asked.\n\n` +
+        `VOCABULARY THE MODERATOR USED FIRST\n` +
+        (primed.length
+          ? primed
+              .map(([w, list]) => {
+                const m = modFirst.get(w)!;
+                return (
+                  `  "${w}" — moderator at ${Math.floor(m.t / 60)}:${String(Math.floor(m.t % 60)).padStart(2, "0")}, ` +
+                  `then used by ${list.length} participant(s)\n` +
+                  `    moderator: "${m.quote.trim().slice(0, 110)}"\n` +
+                  list.slice(0, 2).map((e) => `    [${e.participant} ${e.t}] "${e.quote.slice(0, 110)}"`).join("\n")
+                );
+              })
+              .join("\n\n")
+          : `  No word appears in a participant's answer that the moderator used first.`) +
+        `\n\nQUESTION PHRASING\n` +
+        (flagged.length ? flagged.join("\n") : `  No leading phrasings matched.`) +
+        `\n  ${closedCount} of ${questionCount} questions opened with a yes/no verb.\n\n` +
+        `AIRTIME, IN WORDS\n` +
+        `  moderator: ${modWords}\n` +
+        airtime.map(([p, n]) => `  ${p}: ${n}${partTotal ? ` (${Math.round((n / partTotal) * 100)}% of participant words)` : ""}`).join("\n") +
+        `\n\nWHAT THIS IS NOT\n` +
+        `  Not proof of bias. A moderator naturally repeats the product's own vocabulary, and a word appearing here may simply be the right word.\n` +
+        `  Not a verdict on any question. Phrasings are matched by pattern, and a closed question is often the correct one to ask.\n` +
+        `  Only counts words in excerpts that were tagged, so it sees what you kept, not everything that was said.\n` +
+        `  What it is for: deciding whether to go back to the recording before you call something a finding.`
     );
   }
 
