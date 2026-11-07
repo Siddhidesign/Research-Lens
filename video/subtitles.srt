@@ -1,0 +1,95 @@
+1
+00:00:00,450 --> 00:00:02,496
+Last month I ran twelve interviews.
+
+2
+00:00:02,536 --> 00:00:04,760
+Then someone asked me, how many people
+
+3
+00:00:04,800 --> 00:00:05,893
+actually said that?
+
+4
+00:00:07,233 --> 00:00:08,836
+Here is what most of us do.
+
+5
+00:00:08,876 --> 00:00:11,331
+Paste the transcripts into a chat window,
+
+6
+00:00:11,371 --> 00:00:13,156
+and get back something fluent.
+
+7
+00:00:13,196 --> 00:00:15,590
+But the model only sees what you pasted.
+
+8
+00:00:15,630 --> 00:00:17,902
+It cannot count people, and nothing it
+
+9
+00:00:17,942 --> 00:00:19,971
+says can be traced back to anyone.
+
+10
+00:00:21,111 --> 00:00:22,772
+So I built Research Lens.
+
+11
+00:00:22,812 --> 00:00:25,628
+An MCP server that lets an assistant query
+
+12
+00:00:25,668 --> 00:00:27,941
+your research repository directly.
+
+13
+00:00:28,981 --> 00:00:29,845
+Same question.
+
+14
+00:00:29,885 --> 00:00:31,266
+Now it goes and looks.
+
+15
+00:00:32,206 --> 00:00:34,655
+Round one, one person negative, one of
+
+16
+00:00:34,695 --> 00:00:35,637
+three finished.
+
+17
+00:00:35,677 --> 00:00:37,798
+Round two, two positive, everyone
+
+18
+00:00:37,838 --> 00:00:40,156
+finished, satisfaction up twenty six
+
+19
+00:00:40,196 --> 00:00:40,614
+points.
+
+20
+00:00:42,054 --> 00:00:44,278
+And every quote comes back with who said
+
+21
+00:00:44,318 --> 00:00:46,259
+it, which round, and the timestamp.
+
+22
+00:00:47,499 --> 00:00:49,640
+Then it does the thing I care about most.
+
+23
+00:00:49,680 --> 00:00:51,449
+It tells you when not to trust it.
+
+24
+00:00:53,089 --> 00:00:55,822
+Free, open source, and on npm today.

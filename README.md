@@ -172,7 +172,7 @@ Only `id`, `round`, `segment` and the excerpt fields are required. Everything el
 **From a spreadsheet.** Fill in [`template.csv`](template.csv), one row per quote, then:
 
 ```bash
-npx research-lens-mcp-import my-study.csv "Study name"
+npx -p research-lens-mcp research-lens-import my-study.csv "Study name"
 ```
 
 It validates every row, names the row and the reason if something is wrong, and writes nothing until the file is clean.
