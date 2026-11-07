@@ -31,7 +31,24 @@ const CASES = [
   ["draft_findings", { theme: "control" }],
   ["draft_findings", { theme: "explainability" }],
   ["draft_findings", { theme: "not-a-theme" }],
+  ["draft_findings", { theme: "trust" }],
+  ["compare_rounds", { theme: "onboarding" }],
+  ["quotes_by_theme", { theme: "control", round: 1 }],
+  // the 2.1 fixes
+  ["quotes_by_theme", { theme: "TRUST" }],
+  ["quotes_by_theme", { theme: "Trust", round: 2 }],
+  ["quotes_by_theme", { theme: "trust", segment: "first-time budgeter" }],
+  ["quotes_by_theme", { theme: "trust", segment: "experienced budgeter" }],
+  ["quotes_by_theme", { theme: "trst" }],
+  ["quotes_by_theme", { theme: "zzz" }],
+  ["draft_findings", { theme: "CONTROL" }],
+  ["search_transcripts", { query: "rent", segment: "experienced budgeter" }],
+  ["search_transcripts", { query: "goal", segment: "first-time budgeter" }],
 ];
+
+// list_studies is intentionally not compared: the server prefixes its answer with
+// how many studies are in the repository and where they live, which is a
+// multi-study concept the single-study demo page has no equivalent for.
 
 const proc = spawn("node", [serverPath], { stdio: ["pipe", "pipe", "pipe"] });
 let buf = "";

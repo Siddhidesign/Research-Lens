@@ -34,7 +34,7 @@ const [, , csvArg, studyName, irb] = process.argv;
 
 if (!csvArg) {
   console.error(`
-Usage: npm run import <file.csv> ["Study name"] ["IRB number"]
+Usage: research-lens-import <file.csv> ["Study name"] ["IRB number"]
 
 No CSV yet? There is a template at template.csv. Open it in Excel or Google
 Sheets, fill in your own rows, save as CSV, then run this again.
@@ -150,7 +150,19 @@ const repo = {
   sessions: list,
 };
 
-const target = join(here, "data", "sessions.json");
+// Where to write. RESEARCH_LENS_DATA is the repository the server reads; without
+// it, write next to the CSV rather than inside an installed package, which the
+// user may not even be able to find.
+const dataDir = process.env.RESEARCH_LENS_DATA
+  ? resolve(process.env.RESEARCH_LENS_DATA)
+  : process.cwd();
+if (!existsSync(dataDir)) {
+  console.error(`RESEARCH_LENS_DATA points at ${dataDir}, which does not exist. Create it first.`);
+  process.exit(1);
+}
+const slug = (repo.study.name || "study")
+  .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "study";
+const target = join(dataDir, slug + ".json");
 if (existsSync(target)) copyFileSync(target, target + ".backup");
 writeFileSync(target, JSON.stringify(repo, null, 2) + "\n");
 
@@ -158,7 +170,7 @@ const themes = {};
 list.forEach(s => s.excerpts.forEach(e => (themes[e.theme] ??= new Set()).add(s.id)));
 
 console.log(`
-Imported into data/sessions.json  (previous version saved as sessions.json.backup)
+Imported into ${target}
 
   ${participants} participants
   ${list.length} sessions
@@ -169,5 +181,5 @@ Themes, by how many participants raised each:
 ${Object.entries(themes).sort((a,b)=>b[1].size-a[1].size).map(([t,s]) => `  ${t}: ${s.size}`).join("\n")}
 
 Ask Claude Desktop a question now. No restart needed.
-To update the demo page too: node docs/build.mjs
+${process.env.RESEARCH_LENS_DATA ? "" : "\nNote: RESEARCH_LENS_DATA is not set, so this was written to the current folder.\nPoint that variable at a studies folder and move the file there for the server to see it."}
 `);

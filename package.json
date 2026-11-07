@@ -1,15 +1,18 @@
 {
-  "name": "ux-research-mcp",
-  "version": "1.0.0",
-  "description": "An MCP server that gives an AI assistant direct access to a UX research repository: search transcripts, pull quotes by theme, measure pattern frequency across participants, and draft evidence-backed findings.",
+  "name": "research-lens-mcp",
+  "version": "2.2.0",
+  "description": "An MCP server that lets an AI assistant query a UX research repository with participant-level citations attached. It retrieves and counts; it does not interpret.",
   "type": "module",
   "bin": {
-    "ux-research-mcp": "./build/index.js"
+    "research-lens": "build/index.js",
+    "research-lens-import": "import.mjs"
   },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
     "start": "node build/index.js",
-    "import": "node import.mjs"
+    "import": "node import.mjs",
+    "verify": "node docs/verify_parity.mjs",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -18,5 +21,44 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "ux-research",
+    "user-research",
+    "research-repository",
+    "qualitative-research",
+    "claude",
+    "ai-research",
+    "synthesis",
+    "usability-testing",
+    "consent",
+    "gdpr",
+    "research-ethics",
+    "irb",
+    "participant-consent"
+  ],
+  "license": "MIT",
+  "author": "Siddhi Manche",
+  "homepage": "https://siddhidesign.github.io/Research-Lens/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Siddhidesign/research-lens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Siddhidesign/research-lens/issues"
+  },
+  "files": [
+    "build",
+    "data/sessions.json",
+    "template.csv",
+    "import.mjs",
+    "INGEST_PROMPT.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
   }
 }
