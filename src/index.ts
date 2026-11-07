@@ -437,6 +437,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "find_dissent",
+      description:
+        "Where participants disagreed with each other, rather than the consensus a summary would produce. For one theme, or every theme, shows the split in sentiment, who sat on each side and their words. Also lists participants whose words reached no theme at all. Call this before writing a finding that says users think something.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          theme: { type: "string", description: "Optional. One theme. Omit to scan every theme." },
+          ...STUDY_ARG,
+        },
+      },
+    },
+    {
       name: "check_moderator",
       description:
         "Looks at the researcher's own questions rather than the participants' answers. Reports vocabulary the moderator used before any participant did and who then echoed it, leading and closed question phrasings, and how speaking time was distributed. Use before trusting a theme, to check you found it rather than planted it.",
@@ -885,6 +897,71 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           })
           .join("\n\n") +
         `\n\nEvery line above is a participant's own words with the session it came from. Nothing here is summarised or rephrased.`
+    );
+  }
+
+  if (name === "find_dissent") {
+    if (!rows.length) return out(`No evidence${scope}.`);
+    const wanted = args.theme ? String(args.theme) : null;
+    const themes = wanted
+      ? [...new Set(rows.filter((r) => themeMatches(r.theme, wanted)).map((r) => r.theme))]
+      : [...new Set(rows.map((r) => r.theme))];
+    if (!themes.length) {
+      return out(`No quotes tagged "${wanted}"${scope}.` + themeSuggestion(rows, wanted));
+    }
+
+    const blocks: string[] = [];
+    const aligned: string[] = [];
+    for (const th of themes) {
+      const hits = rows.filter((r) => r.theme === th);
+      const side = (s: string) => {
+        const h = hits.filter((x) => x.sentiment === s);
+        return { people: new Set(h.map((x) => x.participant)), rows: h };
+      };
+      const pos = side("positive"), neg = side("negative"), mix = side("mixed");
+      // Disagreement means different people landed on opposite sides, or one
+      // person held both. A theme everyone felt the same way about is not dissent.
+      const both = [...pos.people].filter((p) => neg.people.has(p));
+      if (!pos.people.size || !neg.people.size) {
+        aligned.push(
+          `  ${th}: ${pos.people.size ? "positive" : neg.people.size ? "negative" : "mixed"} only ` +
+          `(${pos.people.size + neg.people.size + mix.people.size} participant(s))`
+        );
+        continue;
+      }
+      const line = (r: (typeof hits)[number]) => `      [${cite(r, multi, showRound)}] ${quoteOrWithheld(r)}`;
+      blocks.push(
+        `${th} — split ${pos.people.size} positive / ${neg.people.size} negative` +
+          (mix.people.size ? ` / ${mix.people.size} mixed` : "") +
+          (both.length ? `\n  ${both.join(", ")} expressed both, on different occasions.` : "") +
+          `\n\n  WORKED FOR\n` +
+          pos.rows.slice(0, 3).map(line).join("\n") +
+          `\n\n  DID NOT WORK FOR\n` +
+          neg.rows.slice(0, 3).map(line).join("\n") +
+          (mix.rows.length ? `\n\n  BOTH AT ONCE\n` + mix.rows.slice(0, 2).map(line).join("\n") : "")
+      );
+    }
+
+    // Participants nobody tagged. Either sloppy coding, or someone who did not
+    // fit the frame and quietly dropped out of the analysis.
+    const heard = new Set(rows.map((r) => r.participant));
+    const orphans = [...new Set(sessions.map((s) => s.id))].filter((id) => !heard.has(id));
+
+    return out(
+      `DISSENT${scope}\n\n` +
+        (blocks.length
+          ? blocks.join("\n\n" + "-".repeat(60) + "\n\n")
+          : `No theme has participants on both sides.`) +
+        (aligned.length ? `\n\nTHEMES WHERE EVERYONE AGREED\n${aligned.join("\n")}` : "") +
+        (orphans.length
+          ? `\n\nPARTICIPANTS WHOSE WORDS REACHED NO THEME\n  ${orphans.join(", ")}\n` +
+            `  They were interviewed and nothing they said was tagged. That is either incomplete coding, ` +
+            `or someone whose experience did not fit the themes you were looking for. Worth opening their recording before you write anything up.`
+          : "") +
+        `\n\nWHY THIS MATTERS\n` +
+        `  A finding that says "users found it confusing" erases whoever did not. The split above is the honest version.\n` +
+        `  Agreement here is not proof either. A theme everyone felt the same way about may simply be one you only asked ` +
+        `one kind of person about. Read this next to coverage_gaps.`
     );
   }
 
